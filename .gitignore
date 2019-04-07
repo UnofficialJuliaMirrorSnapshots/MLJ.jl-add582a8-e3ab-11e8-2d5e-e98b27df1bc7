@@ -1,0 +1,7 @@
+.ipynb_checkpoints
+*~
+#*
+*.bu
+.DS_Store
+sandbox/
+docs/build
