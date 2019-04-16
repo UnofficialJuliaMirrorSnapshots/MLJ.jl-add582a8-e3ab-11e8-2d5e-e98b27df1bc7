@@ -1,7 +1,13 @@
+# shorter display of MersenneTwister:
+Base.show(stream::IO, t::Random.MersenneTwister) =
+    print(stream, "MersenneTwister($(t.seed))")
+
+
 ## WEIGHTED ENSEMBLES OF FITRESULTS
 
 # R is atomic fitresult type
 # Atom is atomic model type, eg, DecisionTree
+using StatsBase
 mutable struct WrappedEnsemble{R,Atom <: Supervised{R}} <: MLJType
     atom::Atom
     ensemble::Vector{R}
@@ -10,20 +16,20 @@ end
 Nominal = Union{Multiclass,FiniteOrderedFactor}
 
 # to enable trait-based dispatch of predict:
-predict(wens::WrappedEnsemble{R,Atom}, weights, Xnew) where {R,Atom<:Deterministic} = 
+predict(wens::WrappedEnsemble{R,Atom}, weights, Xnew) where {R,Atom<:Deterministic} =
     predict(wens, weights, Xnew, Deterministic, target_scitype(Atom))
-predict(wens::WrappedEnsemble{R,Atom}, weights, Xnew) where {R,Atom<:Probabilistic} = 
+predict(wens::WrappedEnsemble{R,Atom}, weights, Xnew) where {R,Atom<:Probabilistic} =
     predict(wens, weights, Xnew, Probabilistic, target_scitype(Atom))
 
 function predict(wens::WrappedEnsemble, weights, Xnew, ::Type{Deterministic}, ::Type{<:Nominal})
 
     # weights ignored in this case
-    
+
     ensemble = wens.ensemble
     atom = wens.atom
 
     n_atoms = length(ensemble)
-    
+
     n_atoms > 0  || @error "Empty ensemble cannot make predictions."
 
     # TODO: make this more memory efficient but note that the type of
@@ -31,34 +37,34 @@ function predict(wens::WrappedEnsemble, weights, Xnew, ::Type{Deterministic}, ::
     predictions = reduce(hcat, [predict(atom, fitresult, Xnew) for fitresult in ensemble])
     null = categorical(levels(predictions))[1:0] # empty vector with all levels
     prediction = vcat(null, [mode(predictions[i,:]) for i in 1:size(predictions, 1)])
-        
+
     return prediction
 end
 
 function predict(wens::WrappedEnsemble, weights, Xnew, ::Type{Deterministic}, ::Type{<:Continuous})
     ensemble = wens.ensemble
-    
+
     atom = wens.atom
 
     n_atoms = length(ensemble)
-    
+
     n_atoms > 0  || @error "Empty ensemble cannot make predictions."
 
     # TODO: make more memory efficient:
     predictions = reduce(hcat, [weights[k]*predict(atom, ensemble[k], Xnew) for k in 1:n_atoms])
     prediction =  [sum(predictions[i,:]) for i in 1:size(predictions, 1)]
-            
+
     return prediction
 end
 
 function predict(wens::WrappedEnsemble, weights, Xnew, ::Type{Probabilistic}, ::Type{<:Nominal})
 
     ensemble = wens.ensemble
-    
+
     atom = wens.atom
 
     n_atoms = length(ensemble)
-    
+
     n_atoms > 0  || @error "Empty ensemble cannot make predictions."
 
     # TODO: make this more memory efficient but note that the type of
@@ -77,11 +83,11 @@ end
 function predict(wens::WrappedEnsemble, weights, Xnew, ::Type{Probabilistic}, ::Type{<:Continuous})
 
     ensemble = wens.ensemble
-    
+
     atom = wens.atom
 
     n_atoms = length(ensemble)
-    
+
     n_atoms > 0  || @error "Empty ensemble cannot make predictions."
 
     # TODO: make this more memory efficient but note that the type of
@@ -101,40 +107,44 @@ function predict(wens::WrappedEnsemble, weights, Xnew, ::Type{Probabilistic}, ::
     prediction = [Distributions.MixtureModel(predictions[i,:], weights) for i in 1:size(predictions, 1)]
 
     return prediction
-    
+
 end
 
 
 ## CORE ENSEMBLE-BUILDING FUNCTION
 
-function get_ensemble(atom::Supervised{R}, verbosity, X, ys, n, n_patterns,
+function get_ensemble(atom::Supervised{R}, verbosity, X, y, n, n_patterns,
                       n_train, rng, progress_meter) where R
 
     ensemble = Vector{R}(undef, n)
+    ensemble_inds = Vector{Vector{Int}}(undef, n)
     for i in 1:n
         verbosity < 1 || next!(progress_meter)
         train_rows = StatsBase.sample(rng, 1:n_patterns, n_train, replace=false)
+        ensemble_inds[i] = train_rows
         atom_fitresult, atom_cache, atom_report =
-            fit(atom, verbosity - 1, MLJBase.selectrows(X, train_rows),
-                [y[train_rows] for y in ys]...)
+            fit(atom, verbosity - 1, selectrows(X, train_rows), selectrows(y, train_rows))
         ensemble[i] = atom_fitresult
     end
     verbosity < 1 || println()
-    
-    return ensemble
-    
+
+    return (ensemble, ensemble_inds)
+
 end
 
+pair_vcat(p, q) = (vcat(p[1], q[1]), vcat(p[2], q[2]))
+    
 
-## ENSEMBLE MODEL FOR DETERMINISTIC MODELS 
+## ENSEMBLE MODEL FOR DETERMINISTIC MODELS
 
-mutable struct DeterministicEnsembleModel{R,Atom<:Deterministic{R}} <: Deterministic{WrappedEnsemble{R,Atom}} 
+mutable struct DeterministicEnsembleModel{R,Atom<:Deterministic{R}} <: Deterministic{WrappedEnsemble{R,Atom}}
     atom::Atom
     weights::Vector{Float64}
     bagging_fraction::Float64
-    rng_seed::Int
+    rng::Union{Int,AbstractRNG}
     n::Int
     parallel::Bool
+    out_of_bag_measure # TODO: type this
 end
 
 function clean!(model::DeterministicEnsembleModel{R}) where R
@@ -155,39 +165,46 @@ function clean!(model::DeterministicEnsembleModel{R}) where R
             model.weights = model.weights/total
         end
     end
-    
+
     return message
 
 end
-  
+
 # constructor to infer type automatically:
 DeterministicEnsembleModel(atom::Atom, weights,
-                           bagging_fraction, rng_seed, n, parallel) where {R, Atom<:Deterministic{R}} =
+                           bagging_fraction, rng, n, parallel, out_of_bag_measure) where {R, Atom<:Deterministic{R}} =
                                DeterministicEnsembleModel{R, Atom}(atom, weights,
-                                                                   bagging_fraction, rng_seed, n, parallel)
+                                                                   bagging_fraction, rng, n, parallel, out_of_bag_measure)
 
 # lazy keyword constructors:
-function DeterministicEnsembleModel(;atom=DeterministicConstantClassifier(), weights=Float64[],
-    bagging_fraction=0.8, rng_seed::Int=0, n::Int=100, parallel=true)
-    
-    model = DeterministicEnsembleModel(atom, weights, bagging_fraction, rng_seed, n, parallel)
+function DeterministicEnsembleModel(;atom=DeterministicConstantClassifier(),
+                                    weights=Float64[],
+                                    bagging_fraction=0.8,
+                                    rng=Random.GLOBAL_RNG,
+                                    n::Int=100,
+                                    parallel=true,
+                                    out_of_bag_measure=[])
+
+    model = DeterministicEnsembleModel(atom, weights, bagging_fraction, rng,
+                                       n, parallel, out_of_bag_measure)
 
     message = clean!(model)
     isempty(message) || @warn message
-    
+
     return model
 end
 
 
-## ENSEMBLE MODEL FOR PROBABILISTIC MODELS 
+## ENSEMBLE MODEL FOR PROBABILISTIC MODELS
 
-mutable struct ProbabilisticEnsembleModel{R,Atom<:Probabilistic{R}} <: Probabilistic{WrappedEnsemble{R,Atom}} 
+mutable struct ProbabilisticEnsembleModel{R,Atom<:Probabilistic{R}} <: Probabilistic{WrappedEnsemble{R,Atom}}
     atom::Atom
     weights::Vector{Float64}
     bagging_fraction::Float64
-    rng_seed::Int
+    rng::Union{Int, AbstractRNG}
     n::Int
     parallel::Bool
+    out_of_bag_measure
 end
 
 function clean!(model::ProbabilisticEnsembleModel{R}) where R
@@ -211,20 +228,25 @@ function clean!(model::ProbabilisticEnsembleModel{R}) where R
     return message
 
 end
-  
+
 # constructor to infer type automatically:
-ProbabilisticEnsembleModel(atom::Atom, weights, bagging_fraction, rng_seed, n, parallel) where {R, Atom<:Probabilistic{R}} =
-                               ProbabilisticEnsembleModel{R, Atom}(atom, weights, bagging_fraction, rng_seed, n, parallel)
+ProbabilisticEnsembleModel(atom::Atom, weights, bagging_fraction, rng, n, parallel, out_of_bag_measure) where {R, Atom<:Probabilistic{R}} =
+                               ProbabilisticEnsembleModel{R, Atom}(atom, weights, bagging_fraction, rng, n, parallel, out_of_bag_measure)
 
 # lazy keyword constructor:
-function ProbabilisticEnsembleModel(;atom=ConstantProbabilisticClassifier(), weights=Float64[],
-    bagging_fraction=0.8, rng_seed::Int=0, n::Int=100, parallel=true)
-    
-    model = ProbabilisticEnsembleModel(atom, weights, bagging_fraction, rng_seed, n, parallel)
+function ProbabilisticEnsembleModel(;atom=ConstantProbabilisticClassifier(),
+                                    weights=Float64[],
+                                    bagging_fraction=0.8,
+                                    rng=Random.GLOBAL_RNG,
+                                    n::Int=100,
+                                    parallel=true,
+                                    out_of_bag_measure=[])
+
+    model = ProbabilisticEnsembleModel(atom, weights, bagging_fraction, rng, n, parallel,out_of_bag_measure)
 
     message = clean!(model)
     isempty(message) || @warn message
-    
+
     return model
 end
 
@@ -232,7 +254,7 @@ end
 ## COMMON CONSTRUCTOR
 
 """
-    EnsembleModel(atom=nothing, weights=Float64[], bagging_fraction=0.8, rng_seed=0, n=100, parallel=true)
+    EnsembleModel(atom=nothing, weights=Float64[], bagging_fraction=0.8, rng=GLOBAL_RNG, n=100, parallel=true, out_of_bag_measure=[])
 
 Create a model for training an ensemble of `n` learners, with optional
 bagging, each with associated model `atom`. Ensembling is useful if
@@ -241,6 +263,10 @@ repeated calls (ie, is a stochastic model, such as a decision tree
 with randomized node selection criteria), or if `bagging_fraction` is
 set to a value less than 1.0, or both. The constructor fails if no
 `atom` is specified.
+
+If `rng` is an integer, then `MersenneTwister(rng)` is the random
+number generator used for bagging. Otherwise some `AbstractRNG` object
+is expected.
 
 Predictions are weighted according to the vector `weights` (to allow
 for external optimization) except in the case that `atom` is a
@@ -257,6 +283,10 @@ probability distribution/mass functions; in particular, for regressors, the
 ensemble prediction on each input pattern has the type
 `MixtureModel{VF,VS,D}` from the Distributions.jl package, where `D`
 is the type of predicted distribution for `atom`.
+
+If a single measure or non-empty vector of measusres is specified by
+`out_of_bag_measure`, then out of bag estimates of performance are
+reported.
 
 """
 function EnsembleModel(; args...)
@@ -277,27 +307,32 @@ const EitherEnsembleModel{R,Atom} = Union{DeterministicEnsembleModel{R,Atom}, Pr
 
 MLJBase.is_wrapper(::Type{<:EitherEnsembleModel}) = true
 
-function fit(model::EitherEnsembleModel{R, Atom}, verbosity::Int, X, ys...) where {R,Atom<:Supervised{R}}
+function fit(model::EitherEnsembleModel{R, Atom}, verbosity::Int, X, y) where {R,Atom<:Supervised{R}}
 
     parallel = model.parallel
 
-    if model.rng_seed == 0
-        seed = round(Int,time()*1000000)
+    if model.out_of_bag_measure isa Vector
+        out_of_bag_measure = model.out_of_bag_measure
     else
-        seed = model.rng_seed
+        out_of_bag_measure = [model.out_of_bag_measure,]
     end
-    rng = MersenneTwister(seed)
+        
+    if model.rng isa Integer
+        rng = MersenneTwister(model.rng)
+    else
+        rng = model.rng
+    end
 
     atom = model.atom
     n = model.n
-    n_patterns = length(ys[1])
+    n_patterns = nrows(X)
     n_train = round(Int, floor(model.bagging_fraction*n_patterns))
-    
+
     progress_meter = Progress(n, dt=0.5, desc="Training ensemble: ",
                               barglyphs=BarGlyphs("[=> ]"), barlen=50, color=:yellow)
-    
+
     if !parallel || nworkers() == 1 # build in serial
-        ensemble = get_ensemble(atom, verbosity, X, ys,
+        ensemble, ensemble_inds = get_ensemble(atom, verbosity, X, y,
                                 n, n_patterns, n_train, rng, progress_meter)
     else # build in parallel
         if verbosity > 0
@@ -305,21 +340,55 @@ function fit(model::EitherEnsembleModel{R, Atom}, verbosity::Int, X, ys...) wher
         end
         chunk_size = div(n, nworkers())
         left_over = mod(n, nworkers())
-        ensemble =  @distributed (vcat) for i = 1:nworkers()
+        ensemble, ensemble_inds =  @distributed (pair_vcat) for i = 1:nworkers()
             if i != nworkers()
-                get_ensemble(atom, 0, X, ys, chunk_size, n_patterns, n_train, rng, progress_meter)
+                get_ensemble(atom, 0, X, y, chunk_size, n_patterns, n_train,
+                             rng, progress_meter)
             else
-                get_ensemble(atom, 0, X, ys, chunk_size + left_over, n_patterns, n_train, rng, progress_meter)
+                get_ensemble(atom, 0, X, y, chunk_size + left_over, n_patterns, n_train,
+                             rng, progress_meter)
             end
         end
     end
-
     fitresult = WrappedEnsemble(model.atom, ensemble)
-    report = NamedTuple()
+
+    if !isempty(out_of_bag_measure)
+
+        metrics=zeros(length(ensemble),length(out_of_bag_measure))
+        for i= 1:length(ensemble)
+            #oob indices
+            ooB_inds=  setdiff(1:n_patterns, ensemble_inds[i])
+            if isempty(ooB_inds)
+                error("Empty out-of-bag sample. "*
+                      "Data size too small or "*
+                      "bagging_fraction too close to 1.0. ")
+            end
+            predictions = predict(atom, ensemble[i], selectrows(X,ooB_inds))
+
+            for k in eachindex(out_of_bag_measure)
+                metrics[i,k] = out_of_bag_measure[k](predictions,selectrows(y, ooB_inds))
+            end
+
+        end
+        metrics=mean(metrics, dims=1)
+
+        # else TODO
+        #     @show hcat([metrics[k,:]*model.weights[k] for k=1:length(ensemble)]...)
+        #     metrics=mean(hcat([metrics[k,:]*model.weights[k] for k=1:length(ensemble)]...),dims=1)
+        # end
+
+        names = Symbol.(string.(out_of_bag_measure))
+        oob_estimates=NamedTuple{Tuple(names)}(Tuple(vec(metrics)))
+
+    else
+        oob_estimates=NamedTuple()
+    end
+
+    report=(oob_estimates=oob_estimates,)
     cache = deepcopy(model)
 
     return fitresult, cache, report
-    
+
 end
 
 # if n is only parameter that changes, we just append to the existing
@@ -355,7 +424,7 @@ function predict(model::EitherEnsembleModel, fitresult, Xnew)
     # because weights could have changed since last fit:
     message = clean!(model)
     isempty(message) || @warn message
-    
+
     n = model.n
     if isempty(model.weights)
         weights = fill(1/n, n)
@@ -393,7 +462,7 @@ MLJBase.input_is_multivariate(::Type{<:ProbabilisticEnsembleModel{R,Atom}}) wher
 #     # Optimize weights:
 
 #     n = length(ensemble)
-    
+
 #     if model.weight_regularization == 1
 #         weights = ones(n)/n
 #         verbosity < 1 || @info "Weighting atoms uniformly."
@@ -408,7 +477,7 @@ MLJBase.input_is_multivariate(::Type{<:ProbabilisticEnsembleModel{R,Atom}}) wher
 #         # difference to the values of the optimal weights:
 #         ybar = mean(abs.(y))
 #         Y = Y/ybar
-        
+
 #         A = Y*Y'
 #         b = Y*(y/ybar)
 
@@ -423,32 +492,32 @@ MLJBase.input_is_multivariate(::Type{<:ProbabilisticEnsembleModel{R,Atom}}) wher
 #         else
 
 #             # need regularization, `gamma`, between 0 and infinity:
-#             if model.weight_regularization == 0 
+#             if model.weight_regularization == 0
 #                 gamma = 0
 #             else
 #                 gamma = exp(atanh(2*model.weight_regularization - 1))
 #             end
-            
+
 #             # add regularization and augment linear system for constraint
 #             # (weights sum to one)
 #             AA = hcat(A + scale*gamma*Matrix(I, n, n), ones(n))
 #             AA = vcat(AA, vcat(ones(n), [0.0])')
 #             bb = b + scale*gamma*ones(n)/n
 #             bb = vcat(bb, [1.0])
-            
+
 #             weights = (AA \ bb)[1:n] # drop Lagrange multiplier
 #             verbosity < 1 || println("\r$n weights optimized.\n")
 
 #         end
 
 #     end
-                
+
 #     fitresult = WrappedEnsemble(model.atom, ensemble, weights)
 #     report = Dict{Symbol, Any}()
 #     report[falsermalized_weights] = weights*length(weights)
 
 #     cache = (X, y, scheme_X, ensemble)
-        
+
 #     return fitresult, report, cache
 
 # end
@@ -501,11 +570,9 @@ MLJBase.input_is_multivariate(::Type{<:ProbabilisticEnsembleModel{R,Atom}}) wher
 #             push!(errors, err(mach, test_rows, raw=raw))
 #         end
 #         verbosity < 1 || println()
-        
+
 #         mach.report[:weight_regularization_curve] = (range, errors)
 #     end
-    
+
 #     return range, errors
 # end
-
-
