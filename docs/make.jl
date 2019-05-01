@@ -10,6 +10,8 @@ using Pkg
 using Documenter
 using MLJ
 using MLJBase
+using MLJ.Transformers
+using MLJ.Constant
 using MLJModels
 
 #prettyurls to be changed
@@ -19,7 +21,7 @@ makedocs(
     modules = [MLJ, MLJBase, MLJModels, MLJ.Transformers],
     pages = Any["Getting Started"=>"index.md",
                 "Working with Tasks" => "working_with_tasks.md",
-#                "Scientific Data Types"=>"scientific_data_types.md",
+                "Built-in Transformers" => "built_in_transformers.md",                
                 "Learning Networks" => "learning_networks.md",
                 "Simple User Defined Models" => "simple_user_defined_models.md",
                 "Adding Models for General Use" => "adding_models_for_general_use.md",
@@ -27,7 +29,8 @@ makedocs(
                 "Glossary"=>"glossary.md",
                 "API"=>"api.md",
                 "FAQ" => "frequently_asked_questions.md",
-                "MLJ News"=>"NEWS.md"]
+                "MLJ News"=>"NEWS.md",
+                 "Julia BlogPost"=>"julia_blogpost.md"]
 )
 
 deploydocs(

@@ -12,15 +12,17 @@ MLJ aims to be a flexible framework for combining and tuning machine
 learning models, written in the high performance, rapid development,
 scientific programming language, [Julia](https://julialang.org). 
 
-MLJ is in a relatively early stage of development and welcomes new
-collaborators. Click [here](CONTRIBUTE.md) if you are interested in
-contributing, or if you are interested in implementing the MLJ
-interface for an existing Julia machine learning algorithm.
+MLJ is being actively developed and welcomes new collaborators. Click
+[here](CONTRIBUTE.md) if you are interested in contributing, or if you
+are interested in implementing the MLJ interface for an existing Julia
+machine learning algorithm.
 
 The MLJ project is partly inspired by [MLR](https://mlr.mlr-org.com/index.html).
 
 A list of models implementing the MLJ interface:
 [MLJRegistry](https://github.com/alan-turing-institute/MLJRegistry.jl/blob/master/Models.toml)
+
+[MLJ News](https://alan-turing-institute.github.io/MLJ.jl/dev/NEWS/)
 
 
 ### Installation
@@ -28,9 +30,8 @@ A list of models implementing the MLJ interface:
 In the Julia REPL:
 
 ````julia
-]add "https://github.com/alan-turing-institute/MLJBase.jl"
-add "https://github.com/alan-turing-institute/MLJModels.jl"
-add "https://github.com/alan-turing-institute/MLJ.jl"
+]add MLJ
+add MLJModels
 ````
 
 A docker image with installation [instructions](https://github.com/ysimillides/mlj-docker) is also available.

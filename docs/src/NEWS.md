@@ -6,6 +6,10 @@ Development news for MLJ and its satellite packages,
 and [MLJModels](https://github.com/alan-turing-institute/MLJModels.jl)
 
 
+### Official registered versions of MLJBase 0.1.1, MLJModels 0.1.1, MLJ 0.1.1 released
+
+- Minor revisions to the repos, doc updates, and a small breaking change around scitype method names and associated traits. Resolves: [#119](https://github.com/alan-turing-institute/MLJ.jl/issues/119)
+
 ### unversioned commits 12 April 2019 (around 00:10, GMT)
 
 - Added out-of-bag estimates for performance in homogeneous
@@ -34,7 +38,7 @@ and [MLJModels](https://github.com/alan-turing-institute/MLJModels.jl)
   [#86](https://github.com/alan-turing-institute/MLJ.jl/issues/86)
 
 - Revamp of model traits to take advantage of scientific types, with
-  `output_kind` replaced with `target_scitype`, `input_kind` replaced
+  `output_kind` replaced with `target_scitype_union`, `input_kind` replaced
   with `input_scitype`. Also, `output_quantity` dropped,
   `input_quantity` replaced with `Bool`-valued
   `input_is_multivariate`, and `is_pure_julia` made `Bool`-valued.
