@@ -20,6 +20,10 @@ end
   @test include("KNN.jl")
 end
 
+@testset "ridge" begin
+  @test include("ridge.jl")
+end
+
 @testset "Constant" begin
     @test include("Constant.jl")
 end
@@ -58,10 +62,6 @@ end
 
 @testset "loading" begin
     @test include("loading.jl")
-end
-
-@testset "MultivariateStats" begin
-  @test include("LocalMultivariateStats.jl")
 end
 
 @testset "tasks" begin
