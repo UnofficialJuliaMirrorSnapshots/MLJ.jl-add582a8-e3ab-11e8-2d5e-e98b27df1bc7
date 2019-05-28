@@ -19,6 +19,7 @@ mutable struct DeterministicTunedModel{T,M<:Deterministic} <: MLJ.Deterministic
     nested_ranges::NamedTuple
     minimize::Bool
     full_report::Bool
+    train_best::Bool 
 end
 
 mutable struct ProbabilisticTunedModel{T,M<:Probabilistic} <: MLJ.Probabilistic
@@ -30,6 +31,7 @@ mutable struct ProbabilisticTunedModel{T,M<:Probabilistic} <: MLJ.Probabilistic
     nested_ranges::NamedTuple
     minimize::Bool
     full_report::Bool
+    train_best::Bool
 end
 
 const EitherTunedModel{T,M} = Union{DeterministicTunedModel{T,M},ProbabilisticTunedModel{T,M}}
@@ -74,7 +76,8 @@ function TunedModel(;model=nothing,
                     operation=predict,
                     nested_ranges=NamedTuple(),
                     minimize=true,
-                    full_report=true)
+                    full_report=true,
+                    train_best=true)
     
     !isempty(nested_ranges) || error("You need to specify nested_ranges=... ")
     model != nothing || error("You need to specify model=... ")
@@ -84,10 +87,10 @@ function TunedModel(;model=nothing,
     
     if model isa Deterministic
         return DeterministicTunedModel(model, tuning, resampling,
-                      measure, operation, nested_ranges, minimize, full_report)
+           measure, operation, nested_ranges, minimize, full_report, train_best)
     elseif model isa Probabilistic
         return ProbabilisticTunedModel(model, tuning, resampling,
-                      measure, operation, nested_ranges, minimize, full_report)
+           measure, operation, nested_ranges, minimize, full_report, train_best)
     end
     error("$model does not appear to be a Supervised model.")
 end
@@ -103,6 +106,8 @@ end
 
 function MLJBase.fit(tuned_model::EitherTunedModel{Grid,M}, verbosity::Int, X, y) where M
 
+    parameter_names = flat_keys(tuned_model.nested_ranges)
+    
     # the mutating model:
     clone = deepcopy(tuned_model.model)
 
@@ -152,18 +157,33 @@ function MLJBase.fit(tuned_model::EitherTunedModel{Grid,M}, verbosity::Int, X, y
 
     meter = Progress(N+1, dt=0, desc="Iterating over a $N-point grid: ",
                      barglyphs=BarGlyphs("[=> ]"), barlen=25, color=:yellow)
-    verbosity < 1 || next!(meter)
+    verbosity != 1 || next!(meter)
     for i in 1:N
 
-        verbosity < 1 || next!(meter)
+        verbosity != 1 || next!(meter)
 
-        new_params = copy(nested_iterators, Tuple(A[i,:]))   
+        A_row = Tuple(A[i,:])
+
+        new_params = copy(nested_iterators, A_row)   
 
         # mutate `clone` (the model to which `resampler` points):
         set_params!(clone, new_params)
 
-        fit!(resampling_machine, verbosity=verbosity-1)
+        if verbosity == 2
+            fit!(resampling_machine, verbosity=0)
+
+        else
+            fit!(resampling_machine, verbosity=verbosity-1)
+        end
         e = mean(evaluate(resampling_machine))
+
+        if verbosity > 1
+            text = reduce(*, ["$(parameter_names[j])=$(A_row[j]) \t"
+                              for j in 1:length(A_row)])
+            text *= "measurement=$e"
+            println(text)
+        end
+        
         if s*(best_measurement - e) > 0
             best_model = deepcopy(clone)
             best_measurement = e
@@ -176,19 +196,23 @@ function MLJBase.fit(tuned_model::EitherTunedModel{Grid,M}, verbosity::Int, X, y
         
     end
 
-    verbosity < 1 || @info "Training best model on all supplied data."
+    if tuned_model.train_best
+        verbosity < 1 || @info "Training best model on all supplied data."
 
-    # train best model on all the data:
-    # TODO: maybe avoid using machines here and use model fit/predict?
-    fitresult = machine(best_model, X, y)
-    fit!(fitresult, verbosity=verbosity-1)
+        # train best model on all the data:
+        # TODO: maybe avoid using machines here and use model fit/predict?
+        fitresult = machine(best_model, X, y)
+        fit!(fitresult, verbosity=verbosity-1)
+    else
+        fitresult = tuned_model.model
+    end
 
     scales=scale.(flat_values(tuned_model.nested_ranges)) |> collect
 
     if tuned_model.full_report
         report = (# models=models,
                   # best_model=best_model,
-                  parameter_names= permutedims(flat_keys(tuned_model.nested_ranges)), # row vector
+                  parameter_names= permutedims(parameter_names), # row vector
                   parameter_scales=permutedims(scales),  # row vector
                   parameter_values=A,
                   measurements=measurements,
@@ -196,7 +220,7 @@ function MLJBase.fit(tuned_model::EitherTunedModel{Grid,M}, verbosity::Int, X, y
     else
         report = (# models=[deepcopy(clone),][1:0],         # empty vector
                   # best_model=best_model,
-                  parameter_names= permutedims(flat_keys(tuned_model.nested_ranges)), # row vector
+                  parameter_names= permutedims(parameter_names), # row vector
                   parameter_scales=permutedims(scales),   # row vector
                   parameter_values=A[1:0,1:0],            # empty matrix
                   measurements=[best_measurement, ][1:0], # empty vector
@@ -263,10 +287,11 @@ using Plots
 plot(curve.parameter_values, curve.measurements, xlab=curve.parameter_name, xscale=curve.parameter_scale)
 ````
 
-Smart fitting applies. For example, if the model is an ensemble model,
-and the hyperparemeter parameter is `n`, then atomic models are
-progressively added to the ensemble, not recomputed from scratch for
-each new value of `n`.
+If the specified hyperparameter is the number of iterations in some
+iterative model (and that model has an appropriately overloaded
+`MLJBase.update` method) then training is not restarted from scratch
+for each increment of the parameter, ie the model is trained
+progressively.
 
 ````julia
 atom.lambda=1.0
@@ -279,16 +304,18 @@ plot(curves.parameter_values, curves.measurements, xlab=curves.parameter_name)
 function learning_curve!(mach::Machine{<:Supervised};
                         resolution=30,
                         resampling=Holdout(),
-                        measure=rms, operation=predict, nested_range=nothing, verbosity=1, n=1)
+                         measure=rms, operation=predict, nested_range=nothing, verbosity=1, n=1)
 
     nested_range != nothing || error("No param range specified. Use nested_range=... ")
 
     tuned_model = TunedModel(model=mach.model, nested_ranges=nested_range,
                              tuning=Grid(resolution=resolution),
-                             resampling=resampling, measure=measure, full_report=true)
+                             resampling=resampling, measure=measure,
+                             full_report=true, train_best=false)
     tuned = machine(tuned_model, mach.args...)
 
-    measurements = reduce(hcat, [(fit!(tuned, verbosity=verbosity); tuned.report.measurements) for i in 1:n])
+    measurements = reduce(hcat, [(fit!(tuned, verbosity=verbosity);
+                                  tuned.report.measurements) for c in 1:n])
     report = tuned.report
     parameter_name=report.parameter_names[1]
     parameter_scale=report.parameter_scales[1]
