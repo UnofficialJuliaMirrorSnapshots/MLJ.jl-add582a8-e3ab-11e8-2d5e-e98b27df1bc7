@@ -6,11 +6,9 @@ using MLJ
 import MLJBase
 using CategoricalArrays
 
-
 # TRAINABLE MODELS
 
 X_frame, y = datanow();  # boston data
-# X = MLJBase.matrix(X_frame)
 
 knn_ = KNNRegressor(K=7)
 
@@ -36,10 +34,61 @@ rms(yhat(X_frame[test,:]), y[test])
 
 @test MLJ.is_stale(knn1) == false
 
-# TODO: compare to constant regressor and check it's significantly better
 
 
-## NODES
+# FIRST TEST OF NETWORK TRAINING
+
+task = load_reduced_ames()
+X = source(task.X)
+y = source(task.y)
+hot = OneHotEncoder()
+hotM = machine(hot, X)
+W = transform(hotM, X)
+knn = KNNRegressor()
+knnM = machine(knn, W, y)
+yhat = predict(knnM, W)
+
+# should get "Training" for both:
+@test_logs (:info, r"^Training") (:info, r"^S") (:info, r"^S") (:info, r"^Training") fit!(yhat)
+
+# should get "Not retraining" for both:
+@test_logs (:info, r"^Not retraining") (:info, r"^Not retraining") fit!(yhat)
+
+# should get "Updating" for first, "Training" for second:
+hot.drop_last = true
+@test_logs (:info, r"^Updating")  (:info, r"^S") (:info, r"^S") (:info, r"^Training") fit!(yhat)
+
+# should get "Not retraining" for both:
+@test_logs (:info, r"^Not retraining") (:info, r"^Not retraining") fit!(yhat)
+
+# should get "Not retraining" for first, "Updating for second":
+knn.K = 17
+@test_logs (:info, r"^Not retraining") (:info, r"^Updating") fit!(yhat)
+
+# should get "Training" for both:
+@test_logs (:info, r"^Training")  (:info, r"^S") (:info, r"^S") (:info, r"^Training") fit!(yhat, rows=1:100)
+
+# should get "Training" for both"
+@test_logs (:info, r"^Training")  (:info, r"^S") (:info, r"^S") (:info, r"^Training") fit!(yhat)
+
+# should get "Training" for both"
+@test_logs (:info, r"^Training")  (:info, r"^S") (:info, r"^S") (:info, r"^Training") fit!(yhat, force=true)
+
+
+## SECOND TEST OF NETWORK TRAINING
+
+# test smart updating of an ensemble within a network:
+forest = EnsembleModel(atom=ConstantRegressor(), n=4)
+forestM = machine(forest, W, y)
+zhat = predict(forestM, W)
+@test_logs (:info, r"^Not") (:info, r"^Train") fit!(zhat)
+forest.n = 6
+@test_logs (:info, r"^Not") (:info, r"^Updating") (:info, r"Build.*length 4") fit!(zhat)
+
+
+## THIRD TEST OF NETWORK TRAINING
+
+X_frame, y = datanow();  # boston data
 
 tape = MLJ.get_tape
 @test isempty(tape(nothing))
@@ -47,7 +96,6 @@ tape = MLJ.get_tape
 
 XX = source(X_frame[train,:])
 yy = source(y[train])
-@test !MLJ.is_stale(XX)
 
 # construct a transformer to standardize the target:
 uscale_ = UnivariateStandardizer()
@@ -63,8 +111,8 @@ scale = machine(scale_, XX) # no need to fit
 # get the transformed inputs, as if `scale` were already fit:
 Xt = transform(scale, XX)
 
-# convert DataFrame Xt to an array:
-Xa = node(MLJBase.matrix, Xt)
+# do nothing to the DataFrame
+Xa = node(identity, Xt)
 
 # choose a learner and make it machine:
 knn_ = KNNRegressor(K=7) # just a container for hyperparameters
@@ -94,25 +142,28 @@ yhat = inverse_transform(uscale, zhat)
            (:info, r" *:LStat"),
            (:info, r"Training"),
            fit!(yhat, rows=1:50, verbosity=2))
-@test_logs(# will retrain
+@test_logs(
            (:info, r"Not retraining"),
            (:info, r"Not retraining"),
            (:info, r"Not retraining"),
-           fit!(yhat, rows=:, verbosity=2))
-@test_logs(# will not retrain; nothing changed
-           (:info, r"Not retraining"),
-           (:info, r"Not retraining"),
-           (:info, r"Not retraining"),
-           fit!(yhat, verbosity=2))
-knn_.K =4
-@test_logs(# will retrain; new hyperparameter
-           (:info, r"Not retraining"),
-           (:info, r"Not retraining"),
+           fit!(yhat, rows=1:50, verbosity=1))
+@test_logs(
            (:info, r"Training"),
-           fit!(yhat, verbosity=2))
-@test !MLJ.is_stale(XX) # sources always fresh
-
-rms(yhat(X_frame[test,:]), y[test])
+           (:info, r"Training"),
+           (:info, r"Training"),
+           fit!(yhat, verbosity=1))
+knn_.K =67
+@test_logs(
+           (:info, r"Not retraining"),
+           (:info, r"Not retraining"),
+           (:info, r"Updating"),
+           fit!(yhat, verbosity=1))
 
 end
+
+
+## TEST REBINDING OF SOURCE DATA
+
+
+
 true

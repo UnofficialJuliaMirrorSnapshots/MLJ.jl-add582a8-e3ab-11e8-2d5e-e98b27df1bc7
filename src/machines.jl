@@ -5,6 +5,7 @@ abstract type AbstractMachine{M} <: MLJType end
 mutable struct Machine{M<:Model} <: AbstractMachine{M}
 
     model::M
+    previous_model::M
     fitresult
     cache
     args::Tuple
@@ -64,23 +65,41 @@ machine(model::Model, task::UnsupervisedTask) = machine(model, task.X)
 # defined in networks.jl, in addition to `Machine`s defined above.
 
 """
-    fit!(mach::Machine; rows=nothing, verbosity=1)
+    fit!(mach::Machine; rows=nothing, verbosity=1, force=false)
 
-Train the machine `mach` using the algorithm and hyperparameters
-specified by `mach.model`, using those rows of the wrapped data having
-indices in `rows`.
+When called for the first time, call `MLJBase.fit` on `mach.model` and
+store the returned fit-result and report. Subsequent calls do nothing
+unless: (i) `force=true`, or (ii) the specified `rows` are different
+from those used the last time a fit-result was computed, or (iii)
+`mach.model` has changed since the last time a fit-result was computed
+(the machine is *stale*). In cases (i) or (ii) `MLJBase.fit` is 
+called on `mach.model`. Otherwise, `MLJBase.update` is called.
 
-    fit!(mach::NodalMachine; rows=nothing, verbosity=1)
+    fit!(mach::NodalMachine; rows=nothing, verbosity=1, force=false)
 
-A nodal machine is trained in the same way as a regular machine with
-one difference: Instead of training the model on the wrapped data
-*indexed* on `rows`, it is trained on the wrapped nodes *called* on
-`rows`, with calling being a recursive operation on nodes within a
-learning network.
+When called for the first time, attempt to call `MLJBase.fit` on
+`fit.model`. This will fail if a machine in the dependency tape of
+`mach` has not been trained yet, which can be resolved by fitting any
+downstream node instead. Subsequent `fit!` calls do nothing unless:
+(i) `force=true`, or (ii) some machine in the dependency tape of
+`mach` has computed a new fit-result since `mach` last computed its
+fit-result, or (iii) the specified `rows` have changed since the last
+time a fit-result was last computed, or (iv) `mach` is stale (see
+below). In cases (i), (ii) or (iii), `MLJBase.fit` is
+called. Otherwise `MLJBase.update` is called.
+
+A machine `mach` is *stale* if `mach.model` has changed since the last
+time a fit-result was computed, or if if one of its training arguments
+is `stale`. A node `N` is stale if `N.machine` is stale or one of its
+arguments is stale. Source nodes are never stale. 
+
+Note that a nodal machine obtains its training data by *calling* its
+node arguments on the specified `rows` (rather *indexing* its arguments
+on those rows) and that this calling is a recursive operation on nodes
+upstream of those arguments.
 
 """
-function fit!(mach::AbstractMachine; rows=nothing, verbosity=1,
-force=false)
+function fit!(mach::AbstractMachine; rows=nothing, verbosity=1, force=false)
 
     if mach isa NodalMachine && mach.frozen 
         verbosity < 0 || @warn "$mach not trained as it is frozen."
@@ -96,13 +115,30 @@ force=false)
 
     rows_have_changed  = (!isdefined(mach, :rows) || rows != mach.rows)
 
+    if mach isa NodalMachine
+        # determine if concrete data to be used in training may have changed:
+        upstream_state = broadcast(m -> m.state, mach.tape)
+        data_has_changed = rows_have_changed || (upstream_state != mach.upstream_state)
+    else
+        data_has_changed = rows_have_changed
+    end
+
     args = [selectrows(arg, rows) for arg in mach.args]
-    
-    if !isdefined(mach, :fitresult) || rows_have_changed || force 
+
+    if !isdefined(mach, :fitresult) || data_has_changed || force
+        # fit the model:
         verbosity < 1 || @info "Training $mach."
         mach.fitresult, mach.cache, mach.report =
             fit(mach.model, verbosity, args...)
-    else # call `update`:
+    elseif !is_stale(mach)
+        # don't fit the model
+        if verbosity > 0
+            @info "Not retraining $mach.\n It appears up-to-date. "*
+            "Use force=true to force retraining."
+        end
+        return mach
+    else
+        # update the model:
         verbosity < 1 || @info "Updating $mach."
         mach.fitresult, mach.cache, mach.report =
             update(mach.model, verbosity, mach.fitresult, mach.cache, args...)
@@ -112,13 +148,19 @@ force=false)
         mach.rows = deepcopy(rows)
     end
 
+    mach.previous_model = deepcopy(mach.model)
+
     if mach isa NodalMachine
-        mach.previous_model = deepcopy(mach.model)
+        mach.upstream_state = upstream_state
+        mach.state = mach.state + 1
     end
     
     return mach
 
 end
+
+is_stale(mach::Machine) =
+    !isdefined(mach, :fitresult) || (mach.model != mach.previous_model)
 
 machine(model::Model, args...) = Machine(model, args...)
 

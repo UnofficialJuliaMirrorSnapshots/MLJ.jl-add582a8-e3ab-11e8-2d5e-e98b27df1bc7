@@ -2,8 +2,8 @@
 
 abstract type AbstractNode <: MLJType end
 
-struct Source{D} <: AbstractNode
-    data::D      # training data
+mutable struct Source <: AbstractNode
+    data  # training data
 end
 
 is_stale(s::Source) = false
@@ -16,8 +16,19 @@ function (s::Source)(; rows=:)
         return selectrows(s.data, rows)
     end
 end
-
 (s::Source)(Xnew) = Xnew
+
+"""
+   rebind(s::Source, X)
+
+Attach new data `X` to an existing source node `s`.
+
+"""
+function rebind!(s::Source, X)
+    s.data = X
+    return s
+end
+
 
 """
     sources(N)
@@ -62,7 +73,9 @@ mutable struct NodalMachine{M<:Model} <: AbstractMachine{M}
     report
     tape::Vector{NodalMachine}
     frozen::Bool
-    rows # for remembering the rows used in last call to `fit!`
+    rows                        # for remembering the rows used in last call to `fit!`
+    state::Int                  # number of times fit! has been called on machine
+    upstream_state::Vector{Int} # for remembering the upstream state in last call to `fit!`
     
     function NodalMachine{M}(model::M, args::AbstractNode...) where M<:Model
 
@@ -77,6 +90,7 @@ mutable struct NodalMachine{M<:Model} <: AbstractMachine{M}
         
         machine = new{M}(model)
         machine.frozen = false
+        machine.state = 0
         machine.args = args
 #        machine.report = NamedTuple()
 
@@ -91,6 +105,7 @@ mutable struct NodalMachine{M<:Model} <: AbstractMachine{M}
             merge!(tape, get_tape(arg))
         end
         machine.tape = tape
+        machine.upstream_state = broadcast(m -> m.state, tape)
 
         return machine
     end
@@ -196,42 +211,17 @@ MLJBase.selectrows(X::AbstractNode, r) = X(rows=r)
 """
     fit!(N::Node; rows=nothing, verbosity=1, force=false)
 
-When called for the first time, train all machines in the dependency
-tape of `N`, a necessary and sufficient condition for `N()` to be
-defined. Use only those rows with indices in `rows`, or use all rows
-if unspecified. 
-
-In subsequent calls to `fit!` the same machines are updated, but only
-if `force=true`, or if the rows specified for training are different
-from the last train, or if they are stale.
-
-A machine `mach` is *stale* if `mach.model` has changed since it was
-last trained, or if if one of its training arguments is `stale`. A
-node `N` is stale if `N.machine` is stale or one of its arguments is
-stale. A source node is never stale.
-
+Call `fit!(mach)` on each machine `mach` upstream of `N`. 
 """
 function fit!(y::Node; rows=nothing, verbosity=1, force=false)
     if rows == nothing
         rows = (:)
     end
 
-    if force
-        need_training = y.tape
-    else
-        need_training = get_tape(nothing) # empty tape
-        for mach in y.tape
-            if is_stale(mach)
-                push!(need_training, mach)
-            else
-                verbosity < 1 || @info "Not retraining $mach. It is up-to-date."
-            end
-        end
-    end
-    
-    for mach in need_training
+    for mach in y.tape
         fit!(mach; rows=rows, verbosity=verbosity, force=force)
     end
+    
     return y
 end
 
@@ -354,10 +344,8 @@ machine(model::Model, X::AbstractNode, y) = NodalMachine(model, X, source(y))
 
 MLJBase.matrix(X::AbstractNode) = node(MLJBase.matrix, X)
 
-Base.log(v::Vector{<:Number}) = log.(v)
-Base.exp(v::Vector{<:Number}) = exp.(v)
-Base.log(X::AbstractNode) = node(log, X)
-Base.exp(X::AbstractNode) = node(exp, X)
+Base.log(X::AbstractNode) = node(v->log.(v), X)
+Base.exp(X::AbstractNode) = node(v->exp.(v), X)
 
 import Base.+
 +(y1::AbstractNode, y2::AbstractNode) = node(+, y1, y2)
