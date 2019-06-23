@@ -31,37 +31,32 @@ end
 
 
 """
-    sources(N)
+    origins(N)
 
-Return a list of all sources of a node `N` accessed by a call
-`N()`. These are the sources of the acyclic directed graph terminating
-at `N` of the associated learning network, if training input edges are
-deleted.
+Return a list of all origins of a node `N` accessed by a call
+`N()`. These are the source nodes of the acyclic directed graph
+associated learning network terminating at `N` of the, if edges
+corresponding to training arguments are excluded. A `Node` object
+cannot be called on new data unles it has a unique origin.
+
+Not to be confused with `sources(N)` which refers to the same graph
+but without the training edge deletions.
 
 See also: node, source
 
 """
-sources(s::Source) = [s,]
+origins(s::Source) = [s,]
 
-
-## DEPENDENCY TAPES
-
-# a tape is a vector of `NodalMachines` defined below, used to track dependencies
-""" 
-    merge!(tape1, tape2)
-
-Incrementally appends to `tape1` all elements in `tape2`, excluding
-any element previously added (or any element of `tape1` in its initial
-state).
-
-"""
-function Base.merge!(tape1::Vector, tape2::Vector)
-    for machine in tape2
-        if !(machine in tape1)
-            push!(tape1, machine)
+#  _merge!(nodes1, nodes2) incrementally appends to `nodes1` all
+# elements in `nodes2`, excluding any element previously added (or any
+# element of `nodes1` in its initial state). 
+function _merge!(nodes1, nodes2)
+    for x in nodes2
+        if !(x in nodes1)
+            push!(nodes1, x)
         end
     end
-    return tape1
+    return nodes1
 end
 
 # Note that `fit!` has already been defined for any  AbstractMachine in machines.jl
@@ -74,7 +69,6 @@ mutable struct NodalMachine{M<:Model} <: AbstractMachine{M}
     cache
     args::Tuple{Vararg{AbstractNode}}
     report
-    tape::Vector{NodalMachine}
     frozen::Bool
     rows            # for remembering the rows used in last call to `fit!`
     state::Int      # number of times fit! has been called on machine
@@ -95,20 +89,7 @@ mutable struct NodalMachine{M<:Model} <: AbstractMachine{M}
         machine.frozen = false
         machine.state = 0
         machine.args = args
-#        machine.report = NamedTuple()
 
-        # note: `get_tape(arg)` returns arg.tape where this makes
-        # sense and an empty tape otherwise.  However, the complete
-        # definition of `get_tape` must be postponed until
-        # `Node` type is defined.
-
-        # combine the tapes of all arguments to make a new tape:
-        tape = get_tape(nothing) # returns blank tape 
-        for arg in args
-            merge!(tape, get_tape(arg))
-        end
-        machine.tape = tape
-        @show args
         machine.upstream_state = Tuple([state(arg) for arg in args])
 
         return machine
@@ -139,11 +120,11 @@ state(machine::NodalMachine) = machine.state
 
 struct Node{T<:Union{NodalMachine, Nothing}} <: AbstractNode
 
-    operation             # that can be dispatched on a fit-result (eg, `predict`) or a static operation
-    machine::T          # is `nothing` for static operations
-    args::Tuple{Vararg{AbstractNode}}       # nodes where `operation` looks for its arguments
-    sources::Vector{Source}
-    tape::Vector{NodalMachine}    # for tracking dependencies
+    operation  # that can be dispatched on a fit-result (eg, `predict`) or a static operation
+    machine::T  # is `nothing` for static operations
+    args::Tuple{Vararg{AbstractNode}}  # nodes where `operation` looks for its arguments
+    origins::Vector{Source}
+    nodes::Vector{AbstractNode}  # all upstream nodes, order consistent with DAG order (the node "tape")
 
     function Node{T}(operation,
                      machine::T,
@@ -152,31 +133,37 @@ struct Node{T<:Union{NodalMachine, Nothing}} <: AbstractNode
         # check the number of arguments:
         if machine == nothing
             length(args) > 0 || throw(error("`args` in `Node(::Function, args...)` must be non-empty. "))
+            
         end
 
-        sources_ = unique(vcat([sources(arg) for arg in args]...))
-        length(sources_) == 1 ||
-            @warn "Node with multiple non-training sources defined:\n$(sources_). "
+        origins_ = unique(vcat([origins(arg) for arg in args]...))
+        length(origins_) == 1 ||
+            @warn "A node referencing multiple origins when called "*
+        "has been defined:\n$(origins_). "
 
-        # get the machine's dependencies:
-        tape = copy(get_tape(machine))
+        # initialize the list of upstream nodes:
+        nodes_ = AbstractNode[]
 
-        # add the machine itself as a dependency:
-        if machine != nothing
-            merge!(tape, [machine, ])
-        end
-
-        # append the dependency tapes of all arguments:
+        # merge the lists from arguments:
         for arg in args
-            merge!(tape, get_tape(arg))
+            _merge!(nodes_, nodes(arg))
         end
 
-        return new{T}(operation, machine, args, sources_, tape)
+        # merge the lists from training arguments:
+        if machine != nothing
+            for arg in machine.args
+                _merge!(nodes_, nodes(arg))
+            end
+        end
+
+        return new{T}(operation, machine, args, origins_, nodes_)
 
     end
 end
 
-sources(X::Node) = X.sources
+origins(X::Node) = X.origins
+nodes(X::Node) = AbstractNode[X.nodes..., X]
+nodes(S::Source) = AbstractNode[S, ]
 
 function is_stale(X::Node)
     (X.machine != nothing && is_stale(X.machine)) ||
@@ -204,12 +191,6 @@ function state(W::MLJ.Node)
     return NamedTuple{keys}(values)
 end
 
-# to complete the definition of `NodalMachine` and `Node`
-# constructors:
-get_tape(::Any) = NodalMachine[]
-get_tape(X::Node) = X.tape
-get_tape(machine::NodalMachine) = machine.tape
-
 # autodetect type parameter:
 Node(operation, machine::M, args...) where M<:Union{NodalMachine, Nothing} =
     Node{M}(operation, machine, args...)
@@ -220,9 +201,9 @@ Node(operation, args::AbstractNode...) = Node(operation, nothing, args...)
 # make nodes callable:
 (y::Node)(; rows=:) = (y.operation)(y.machine, [arg(rows=rows) for arg in y.args]...)
 function (y::Node)(Xnew)
-    length(y.sources) == 1 ||
-        error("Nodes with multiple non-training sources are not callable on new data. "*
-              "Use sources(node) to inspect. ")
+    length(y.origins) == 1 ||
+        error("Nodes with multiple origins are not callable on new data. "*
+              "Use origins(node) to inspect. ")
     return (y.operation)(y.machine, [arg(Xnew) for arg in y.args]...)
 end
 
@@ -237,14 +218,27 @@ MLJBase.selectrows(X::AbstractNode, r) = X(rows=r)
 """
     fit!(N::Node; rows=nothing, verbosity=1, force=false)
 
-Call `fit!(mach)` on each machine `mach` upstream of `N`. 
+Train the machines of all dynamic nodes in the learning network terminating at
+`N` in an appropriate order.
+
 """
 function fit!(y::Node; rows=nothing, verbosity=1, force=false)
     if rows == nothing
         rows = (:)
     end
 
-    for mach in y.tape
+    # get non-source nodes:
+    nodes_ = filter(nodes(y)) do n
+        n isa Node
+    end
+
+    # get machines to fit:
+    machines = map(n -> n.machine, nodes_)
+    machines = filter(unique(machines)) do mach
+        mach != nothing
+    end
+
+    for mach in machines
         fit!(mach; rows=rows, verbosity=verbosity, force=force)
     end
     
@@ -323,10 +317,11 @@ categorical vector, or table. The calling behaviour of a source node is this:
     Xs(rows=r) = selectrows(X, r)  # eg, X[r,:] for a DataFrame
     Xs(Xnew) = Xnew
 
-See also: sources, node
+See also: origins, node
 
 """
 source(X) = Source(X) # here `X` is data
+source(X::Source) = X
 
 """
     N = node(f::Function, args...)
@@ -366,7 +361,7 @@ Calling a node is a recursive operation which terminates in the call
 to a source node (or nodes). Calling nodes on *new* data `X` fails unless the
 number of such nodes is one.  
 
-See also: source, sources
+See also: source, origins
 
 """
 node = Node

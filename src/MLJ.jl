@@ -15,10 +15,11 @@ export EnsembleModel                                 # ensembles.jl
 export ConstantRegressor, ConstantClassifier         # builtins/Constant.jl
 export models, localmodels, @load                    # loading.jl
 export KNNRegressor                                  # builtins/KNN.jl
+export @from_network, machines, sources              # composites.jl
 
 # defined in include files "machines.jl and "networks.jl":
 export Machine, NodalMachine, machine, AbstractNode
-export source, node, fit!, freeze!, thaw!, Node, sources
+export source, node, fit!, freeze!, thaw!, Node, sources, origins
 
 # defined in include file "builtins/Transformers.jl":
 export FeatureSelector
@@ -29,7 +30,7 @@ export OneHotEncoder
 # export UnivariateDiscretizer, Discretizer
 
 # rexport from Random, Statistics, Distributions, CategoricalArrays:
-export pdf, mode, median, mean, shuffle!, categorical
+export pdf, mode, median, mean, shuffle!, categorical, shuffle
 
 # reexport from MLJBase:
 export nrows, nfeatures, info
@@ -98,7 +99,8 @@ include("tasks.jl")         # enhancements to task interface defined in MLJBase
 include("builtins/Transformers.jl")
 include("builtins/Constant.jl")
 include("builtins/KNN.jl")
-include("builtins/ridge.jl")
+include("builtins/ridge.jl") # defines a model for testing only
+
 
 ## GET THE EXTERNAL MODEL METADATA AND MERGE WITH MLJ MODEL METADATA
 

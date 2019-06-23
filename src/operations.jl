@@ -22,21 +22,26 @@
 
 ## TODO: need to add checks on the arguments of
 ## predict(::AbstractMachine, ) and transform(::AbstractMachine, )
+## Refactor using simpler non-macro code generation
 
 macro extend_to_machines(operation)
     quote
 
-        # most general (no coersion):
+        # with arguments specified:
         function $(esc(operation))(machine::AbstractMachine, args...) 
             if isdefined(machine, :fitresult)
-                tst = machine isa Supervised
                 return $(esc(operation))(machine.model,
                                          machine.fitresult,
                                          args...)
             else
-                throw(error("$machine has not trained."))
+                throw(error("$machine has not been trained."))
             end
         end
+        $(esc(operation))(machine::Machine; rows=:) =
+            $(esc(operation))(machine, selectrows(machine.args[1], rows))
+        $(esc(operation))(machine::Machine, task::MLJTask) =
+            $(esc(operation))(machine, task.X)
+        
     end
 end
 
@@ -54,8 +59,6 @@ end
 @extend_to_machines transform
 @extend_to_machines inverse_transform
 @extend_to_machines se
-@extend_to_machines evaluate
-@extend_to_machines fitted_params
 
 @sugar predict
 @sugar predict_mode
@@ -65,7 +68,21 @@ end
 @sugar inverse_transform
 @sugar se
 
-# experimental:
-predict(machine::Machine{<:Supervised}; rows=rows) =
-    predict(machine, selectrows(machine.args[1], rows))
+
+# the zero argument special cases:
+function evaluate(machine::AbstractMachine) 
+    if isdefined(machine, :fitresult)
+        return evaluate(machine.model, machine.fitresult)
+    else
+        throw(error("$machine has not been trained."))
+    end
+end
+function fitted_params(machine::AbstractMachine) 
+    if isdefined(machine, :fitresult)
+        return fitted_params(machine.model, machine.fitresult)
+    else
+        throw(error("$machine has not been trained."))
+    end
+end
+
 

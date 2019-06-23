@@ -90,10 +90,6 @@ forest.n = 6
 
 X_frame, y = datanow();  # boston data
 
-tape = MLJ.get_tape
-@test isempty(tape(nothing))
-@test isempty(tape(knn1))
-
 XX = source(X_frame[train,:])
 yy = source(y[train])
 
@@ -126,7 +122,6 @@ yhat = inverse_transform(uscale, zhat)
 
 # fit-through training:
 @test_logs((:info, r"Training"),
-           (:info, r"Training"),
            (:info, r"Features standarized: "),
            (:info, r" *:Crim"),
            (:info, r" *:Zn"),
@@ -140,6 +135,7 @@ yhat = inverse_transform(uscale, zhat)
            (:info, r" *:PTRatio"),
            (:info, r" *:Black"),
            (:info, r" *:LStat"),
+           (:info, r"Training"),
            (:info, r"Training"),
            fit!(yhat, rows=1:50, verbosity=2))
 @test_logs(
@@ -160,10 +156,5 @@ knn_.K =67
            fit!(yhat, verbosity=1))
 
 end
-
-
-## TEST REBINDING OF SOURCE DATA
-
-
 
 true

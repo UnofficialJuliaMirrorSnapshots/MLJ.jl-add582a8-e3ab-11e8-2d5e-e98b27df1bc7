@@ -6,6 +6,23 @@ Development news for MLJ and its satellite packages,
 and [MLJModels](https://github.com/alan-turing-institute/MLJModels.jl)
 
 
+## MLJModels v0.2.4
+
+- Add compatibility requirement MLJBase="0.2.3" 
+
+
+## MLJBase v0.2.3
+
+- Small changes on definitions of `==` and `isequal` for `MLJType`
+  objects. In particular, fields that are random number generators may
+  change state without effecting an object's `==` equivalence class. 
+  
+- Add `@set_defaults` macro for generating keywork constructors for
+    `Model` subtypes. 
+	
+- Add abstract type `UnsupervisedNetwork <: Unsupervised`.
+
+
 ## MLJ v0.2.3
 
 - Fixed bug in models(::MLJTask) method which excluded some relevant
