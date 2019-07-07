@@ -28,35 +28,7 @@ dummy2 = DummyModel(2, 9.5, 'k')
 super_model = SuperModel(0.5, dummy1, dummy2) 
 params(super_model)
 
-changes = (lambda = 1.0, model2 = (K = 3,))
-set_params!(super_model, changes)
-
-@test params(super_model) == (lambda = 1.0,
-      model1 = (K = 1, metric = 9.5, kernel = 'k'),
-      model2 = (K = 3, metric = 9.5, kernel = 'k'))
-
-@test MLJ.flat_keys(params(super_model)) == ["lambda", "model1.K", "model1.metric", "model1.kernel",
-                                "model2.K", "model2.metric", "model2.kernel"]
-
-@test MLJ.flat_length(changes) == 2 
-@test MLJ.flat_length(params(super_model)) == 7
-
-@test MLJ.flat_values(params(dummy_model)) == (4, 9.5, 'k')
-@test MLJ.flat_values(params(super_model)) ==
-    (1.0, 1, 9.5, 'k', 3, 9.5, 'k')
-@test MLJ.flat_values(changes) == (1.0, 3)
-
-@test copy(changes) == changes
-
 tree = params(super_model)
-
-# copy with changes:
-@test copy(params(dummy_model), (42, 7.2, 'r')) ==
-    (K = 42, metric = 7.2, kernel = 'r')
-@test copy(tree, (2.0, 2, 19, 'z', 6, 20, 'x')) ==
-    (lambda = 2.0, model1 = (K = 2, metric = 19, kernel = 'z'),
-          model2 = (K = 6, metric = 20, kernel = 'x'))
-
 
 p1 = range(dummy_model, :K, lower=1, upper=10, scale=:log10) 
 p2 = range(dummy_model, :kernel, values=['c', 'd']) 
@@ -65,7 +37,6 @@ p4 = range(dummy_model, :K, lower=1, upper=3, scale=x->2x)
 @test_throws ErrorException range(dummy_model, :K, lower=1, values=['c', 'd'])
 @test_throws ErrorException range(dummy_model, :kernel, upper=10)
 
-@test occursin(r"\e\[34mNumericRange\{K\} @ .*\e\[39m", repr(TestParameters.p1))
 @test MLJ.scale(p1) == :log10
 @test MLJ.scale(p2) == :none
 @test MLJ.scale(p3) == :log2
@@ -79,6 +50,11 @@ p4 = range(dummy_model, :K, lower=1, upper=3, scale=x->2x)
 u = 2^(log2(0.1)/2)
 @test MLJ.iterator(p3, 3) ≈ [0.1, u, 1]
 @test MLJ.iterator(p4, 3) == [2, 4, 6]
+
+# test ranges constructed from neste parameters specified with dots:
+q1 = range(super_model, :(model1.K) , lower=1, upper=10, scale=:log10) 
+@test iterator(q1, 5) == iterator(p1, 5)
+q2 = range
 
 # test unwinding of iterators
 iterators = ([1, 2], ["a","b"], ["x", "y", "z"])
@@ -96,28 +72,6 @@ iterators = ([1, 2], ["a","b"], ["x", "y", "z"])
  1  "b"  "z";
  2  "b"  "z"]
 
-# test iterator of a nested_iterators (parameter space iterators):
-nested_iterators = (lambda = MLJ.iterator(p3, 2),
-                        model1 = (K = MLJ.iterator(p1, 2),
-                                         kernel = MLJ.iterator(p2)))
-models = MLJ.iterator(super_model, nested_iterators)
-@test map(MLJ.params, models) ==
-    [(lambda = 0.1, model1 = (K = 1, metric = 9.5, kernel = 'c'),
-            model2 = (K = 3, metric = 9.5, kernel = 'k')), 
-     (lambda = 1.0, model1 = (K = 1, metric = 9.5, kernel = 'c'),
-            model2 = (K = 3, metric = 9.5, kernel = 'k')), 
-     (lambda = 0.1, model1 = (K = 10, metric = 9.5, kernel = 'c'),
-            model2 = (K = 3, metric = 9.5, kernel = 'k')),
-     (lambda = 1.0, model1 = (K = 10, metric = 9.5, kernel = 'c'),
-            model2 = (K = 3, metric = 9.5, kernel = 'k')),
-     (lambda = 0.1, model1 = (K = 1, metric = 9.5, kernel = 'd'),
-            model2 = (K = 3, metric = 9.5, kernel = 'k')), 
-     (lambda = 1.0, model1 = (K = 1, metric = 9.5, kernel = 'd'),
-            model2 = (K = 3, metric = 9.5, kernel = 'k')), 
-     (lambda = 0.1, model1 = (K = 10, metric = 9.5, kernel = 'd'),
-            model2 = (K = 3, metric = 9.5, kernel = 'k')),
-     (lambda = 1.0, model1 = (K = 10, metric = 9.5, kernel = 'd'),
-            model2 = (K = 3, metric = 9.5, kernel = 'k'))]
 
 end
 true

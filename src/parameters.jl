@@ -1,154 +1,7 @@
 
 ## NESTED PARAMATER INTERFACE
 
-function set_params!(model, key::Symbol, value)
-    setfield!(model, key, value)
-    return model
-end
 
-function set_params!(model, key::Symbol, params::NamedTuple)
-    submodel = getfield(model, key)
-    set_params!(submodel, params)
-    return model
-end
-
-
-"""
-   set_params!(model, nested_params)
-
-Mutate the possibly nested fields of `model`, as returned by
-`params(model)`, by specifying a named tuple `nested_params` matching
-the pattern of `params(model)`.
-
-    julia> rf = EnsembleModel(atom=DecisionTreeClassifier());
-    julia> params(rf)
-    (atom = (pruning_purity = 1.0,
-             max_depth = -1,
-             min_samples_leaf = 1,
-             min_samples_split = 2,
-             min_purity_increase = 0.0,
-             n_subfeatures = 0.0,
-             display_depth = 5,
-             post_prune = false,
-             merge_purity_threshold = 0.9,),
-     weights = Float64[],
-     bagging_fraction = 0.8,
-     n = 100,
-     parallel = true,
-     out_of_bag_measure = Any[],)
-
-    julia> set_params!(rf, (atom = (max_depth = 2,), n = 200));
-    julia> params(rf)
-    (atom = (pruning_purity = 1.0,
-             max_depth = 2,
-             min_samples_leaf = 1,
-             min_samples_split = 2,
-             min_purity_increase = 0.0,
-             n_subfeatures = 0.0,
-             display_depth = 5,
-             post_prune = false,
-             merge_purity_threshold = 0.9,),
-     weights = Float64[],
-     bagging_fraction = 0.8,
-     n = 200,
-     parallel = true,
-     out_of_bag_measure = Any[],)
-
-"""
-function set_params!(model, params::NamedTuple)
-    for k in keys(params)
-        set_params!(model, k,  getproperty(params, k))
-    end
-    return model
-end
-
-function flat_length(params::NamedTuple)
-    count = 0
-    for k in keys(params)
-        value = getproperty(params, k)
-        if value isa NamedTuple
-            count += flat_length(value)
-        else
-            count += 1
-        end
-    end
-    return count
-end
-
-function flat_values(params::NamedTuple)
-    values = []
-    for k in keys(params)
-        value = getproperty(params, k)
-        if value isa NamedTuple
-            append!(values, flat_values(value))
-        else
-            push!(values, value)
-        end
-    end
-    return Tuple(values)
-end
-
-"""
-     flat_keys(params::NamedTuple)
-
-Use dot-concatentation to express each possibly nested key of `params`
-in string form.
-
-### Example
-
-````
-julia> flat_keys((A=(x=2, y=3), B=9)))
-["A.x", "A.y", "B"]
-````
-
-"""
-flat_keys(pair::Pair{Symbol}) = flat_keys(pair, last(pair))
-flat_keys(pair, ::Any) = [string(first(pair)), ]
-flat_keys(pair, ::NamedTuple) =
-    [string(first(pair), ".", str) for str in flat_keys(last(pair))]
-flat_keys(nested::NamedTuple) =
-    reduce(vcat, [flat_keys(k => getproperty(nested, k)) for k in keys(nested)])
-
-
-"""
-    copy(params::NamedTuple, values=nothing)
-
-Return a copy of `params` with new `values`. That is,
-`flat_values(copy(params, values)) == values` is true, while the
-nested keys remain unchanged.
-
-If `values` is not specified a deep copy is returned. 
-
-""" # type piracy here:
-function Base.copy(params::NamedTuple, values=nothing)
-
-    values != nothing || return deepcopy(params)
-    flat_length(params) == length(values) ||
-        throw(DimensionMismatch("Length of NamedTuple object not matching number "*
-                                "of supplied values"))
-
-    kys = Symbol[]
-    vals = Any[]
-    pos = 1
-    
-    for oldky in keys(params)
-        oldval = getproperty(params, oldky)
-        if oldval isa NamedTuple
-            L = flat_length(oldval)
-            newval = copy(oldval, values[pos:(pos+L-1)])
-            push!(kys, oldky)
-            push!(vals, newval)
-            pos += L
-        else
-            push!(kys, oldky)
-            push!(vals, values[pos])
-            pos += 1
-        end
-    end
-
-    return NamedTuple{Tuple(kys)}(Tuple(vals))
-
-end
 
 
 ## PARAMETER RANGES
@@ -187,41 +40,31 @@ MLJ.inverse_transform(::SCALE, f::Function, x) = f(x) # not a typo!
 
 abstract type ParamRange <: MLJType end
 
-struct NominalRange{field,T} <: ParamRange
+Base.isempty(::ParamRange) = false
+
+struct NominalRange{T} <: ParamRange
+    field::Union{Symbol,Expr}
     values::Tuple{Vararg{T}}
 end
 
-struct NumericRange{field,T,D} <: ParamRange
+struct NumericRange{T,D} <: ParamRange
+    field::Union{Symbol,Expr}
     lower::T
     upper::T
     scale::D
 end
 
-function Base.show(stream::IO, object::ParamRange)
-    id = objectid(object)
-    field = typeof(object).parameters[1]
-    description = string(typeof(object).name.name, "{$field}")
-    str = "$description @ $(MLJBase.handle(object))"
-    if !isempty(fieldnames(typeof(object)))
-        printstyled(IOContext(stream, :color=> MLJBase.SHOW_COLOR),
-                    str, color=:blue)
-    else
-        print(stream, str)
-    end
-end
+# function Base.show(stream::IO, object::ParamRange)
+#     id = objectid(object)
+#     T = typeof(object).parameters[1]
+#     description = string(typeof(object).name.name, "{$T}")
+#     str = "$description @ $(MLJBase.handle(object))"
+#     printstyled(IOContext(stream, :color=> MLJBase.SHOW_COLOR),
+#                 str, color=:blue)
+#     print(stream, " for $(object.field)")
 
-""" 
-   get_type(M, field::Symbol)
 
-Returns the type of the field `field` of a model M.
-"""
-function get_type(M, field::Symbol)
-    if isdefined(M, field)
-        return typeof(getproperty(M, field))
-    else
-        error("Model $M does not have a field $field.")
-    end
-end
+MLJBase.show_as_constructed(::Type{<:ParamRange}) = true
 
 """
     r = range(model, :hyper; values=nothing)
@@ -248,16 +91,17 @@ and `upper`.
 See also: iterator
 
 """
-function Base.range(model, field::Symbol; values=nothing,
+function Base.range(model, field::Union{Symbol,Expr}; values=nothing,
                     lower=nothing, upper=nothing, scale::D=:linear) where D
-    T = get_type(model, field)
+    value = getproperty(model, field)
+    T = typeof(value)
     if T <: Real
         (lower === nothing || upper === nothing) &&
             error("You must specify lower=... and upper=... .")
-        return NumericRange{field,T,D}(lower, upper, scale)
+        return NumericRange{T,D}(field, lower, upper, scale)
     else
         values === nothing && error("You must specify values=... .")
-        return NominalRange{field,T}(Tuple(values))
+        return NominalRange{T}(field, Tuple(values))
     end
 end
 
@@ -271,7 +115,7 @@ possible return values are: `:none` (for a `NominalRange`), `:linear`,
 """
 scale(r::NominalRange) = :none
 scale(r::NumericRange) = :custom
-scale(r::NumericRange{field,T,Symbol}) where {field,T} =
+scale(r::NumericRange{T,Symbol}) where T =
     r.scale
 
 
@@ -279,7 +123,7 @@ scale(r::NumericRange{field,T,Symbol}) where {field,T} =
 
 iterator(param_range::NominalRange) = collect(param_range.values)
 
-function iterator(param_range::NumericRange{field,T}, n::Int) where {field,T<:Real}
+function iterator(param_range::NumericRange{T}, n::Int) where {T<:Real}
     s = scale(param_range.scale) 
     transformed = range(transform(Scale, s, param_range.lower),
                 stop=transform(Scale, s, param_range.upper),
@@ -291,7 +135,7 @@ function iterator(param_range::NumericRange{field,T}, n::Int) where {field,T<:Re
 end
 
 # in special case of integers, round to nearest integer:
-function iterator(param_range::NumericRange{field, I}, n::Int) where {field,I<:Integer}
+function iterator(param_range::NumericRange{I}, n::Int) where {I<:Integer}
     s = scale(param_range.scale) 
     transformed = range(transform(Scale, s, param_range.lower),
                 stop=transform(Scale, s, param_range.upper),
@@ -356,35 +200,4 @@ function unwind(iterators...)
     return A
 end
 
-"""
-    iterator(model::Model, param_iterators::NamedTuple)
-
-Iterator over all models of type `typeof(model)` defined by
-`param_iterators`.
-
-Each `name` in the nested `:name => value` pairs of `param_iterators`
-should be the name of a (possibly nested) field of `model`; and each
-element of `flat_values(param_iterators)` (the corresponding final
-values) is an iterator over values of one of those fields.
-
-See also `iterator` and `params`.
-
-"""
-function iterator(model::M, param_iterators::NamedTuple) where M<:Model
-    iterators = flat_values(param_iterators)
-    A = unwind(iterators...)
-
-    # initialize iterator (vector) to be returned:
-    L = size(A, 1)
-    it = Vector{M}(undef, L)
-
-    for i in 1:L
-        params = copy(param_iterators, Tuple(A[i,:]))
-        clone = deepcopy(model)
-        it[i] = set_params!(clone, params)
-    end
-
-    return it
-
-end
 
