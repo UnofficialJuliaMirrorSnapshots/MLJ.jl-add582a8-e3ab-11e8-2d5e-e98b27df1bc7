@@ -24,7 +24,7 @@ learning network works with *fixed* sources for its
 training/evaluation data, but can be built and tested in stages. By
 contrast, an *exported learning network* is a learning network
 exported as a stand-alone, re-usable `Model` object, to which all the
-MLJ `Model` meta-algorthims can be applied (ensembling, systematic
+MLJ `Model` meta-algorithms can be applied (ensembling, systematic
 tuning, etc).
 
 As we shall see, exporting a learning network as a reusable model, is
@@ -35,7 +35,7 @@ understand how the stand-alone models work.
 In MLJ learning networks treat the flow of information during training
 and predicting separately. For this reason, simpler examples may
 appear more a little more complicated than in other
-approaches. However, in more sophisticated examples, such as stacking,
+approaches. However, in more sophisticated examples, such as _stacking_,
 this separation is essential.
 
 
@@ -47,8 +47,8 @@ The diagram above depicts a learning network which standardises the
 input data `X`, learns an optimal Box-Cox transformation for the
 target `y`, predicts new target values using ridge regression, and
 then inverse-transforms those predictions, for later comparison with
-the original test data. The machines are labelled yellow. We first
-need to import the RidgeRegressor model (you will need MLJModels in
+the original test data. The machines are labelled in yellow. We first
+need to import the RidgeRegressor model (you will need `MLJModels` in
 your load path):
 
 ```julia
