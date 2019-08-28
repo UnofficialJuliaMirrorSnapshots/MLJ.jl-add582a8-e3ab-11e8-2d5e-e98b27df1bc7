@@ -37,11 +37,11 @@ cross_entropy(ŷ, y)
 
 Notice that `l1` reports per-sample evaluations, while `rms`
 only reports an aggregated result. This and other behavior can be
-gleaned from measure *traits* which are summarized by the `info`
+gleaned from measure *traits* which are summarized by the `traits`
 method:
 
 ```@repl losses_and_scores
-info(l1)
+traits(l1)
 ```
 
 A user-defined measure in MLJ can be passed to the `evaluate!`
@@ -49,7 +49,7 @@ method, and elsewhere in MLJ, provided it is a function or callable
 object conforming to the above syntactic conventions. By default, a
 custom measure is understood to:
 
-- be a loss function (rather than a score or interval) 
+- be a loss function (rather than a score) 
 
 - report an aggregated value (rather than per-sample evaluations)
 
@@ -94,7 +94,7 @@ dipatched.
 
 The [LossFunctions](https://github.com/JuliaML/LossFunctions.jl)
 package includes "distance loss" functions for `Continuous` targets,
-and "marginal loss" functins for `Binary` target. While the
+and "marginal loss" functins for `Binary` targets. While the
 LossFunctions interface differs from the present one (for, example
 `Binary` observations must be +1 or -1), one can safely pass the loss
 functions defined there to any MLJ algorithm, which re-interprets it

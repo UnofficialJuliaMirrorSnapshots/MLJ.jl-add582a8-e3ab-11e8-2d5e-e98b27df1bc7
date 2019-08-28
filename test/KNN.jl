@@ -3,6 +3,7 @@ module TestKNN
 # using Revise
 using Test
 using MLJ
+import MLJBase
 
 Xtr = [4 2 5 3;
        2 1 6 0.0];
@@ -26,9 +27,12 @@ knn.K = 2
 fitresult, cache, report = MLJ.update(knn, 0, fitresult, cache, X, y); 
 @test predict(knn, fitresult, Xtest)[1] !=  ypred
 
-info(knn)
+MLJBase.info(knn)
 
-X, y = X_and_y(load_boston())
+N =100
+X = (x1=rand(N), x2=rand(N), x3=rand(N))
+y = 2X.x1  - X.x2 + 0.05*rand(N)
+
 knnM = machine(knn, X, y)
 @test_logs (:info, r"Training") fit!(knnM)
 predict(knnM, MLJ.selectrows(X, 1:10))

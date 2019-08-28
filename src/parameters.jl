@@ -1,9 +1,3 @@
-
-## NESTED PARAMATER INTERFACE
-
-
-
-
 ## PARAMETER RANGES
 
 
@@ -91,12 +85,10 @@ f(xn)]`, where `x1, x2, ..., xn` are linearly spaced between `lower`
 and `upper`.
 
 
-See also: [`iterator`](@ref).
-
 """
 function Base.range(model, field::Union{Symbol,Expr}; values=nothing,
                     lower=nothing, upper=nothing, scale::D=:linear) where D
-    value = getproperty(model, field)
+    value = recursive_getproperty(model, field)
     T = typeof(value)
     if T <: Real
         (lower === nothing || upper === nothing) &&

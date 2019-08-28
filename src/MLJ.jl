@@ -13,10 +13,11 @@ export @curve, @pcurve,                               # utilities.jl
         Grid, TunedModel, learning_curve!,            # tuning.jl
         EnsembleModel,                                # ensembles.jl
         ConstantRegressor, ConstantClassifier,        # builtins/Constant.jl
-        models, localmodels, @load,                   # loading.jl
+        models, localmodels, @load, model,            # loading.jl
+        load,                          # loading.jl
         KNNRegressor,                                 # builtins/KNN.jl
         @from_network, machines, sources, anonymize!, # composites.jl
-        fitresults                                    # composites.jl
+        rebind!, fitresults                           # composites.jl
 
 # defined in include files "machines.jl and "networks.jl":
 export Machine, NodalMachine, machine, AbstractNode,
@@ -33,24 +34,28 @@ export FeatureSelector,
 # rexport from Random, Statistics, Distributions, CategoricalArrays:
 export pdf, mode, median, mean, shuffle!, categorical, shuffle, levels, levels!
 
-# reexport from MLJBase:
-export nrows, nfeatures, info,
-        SupervisedTask, UnsupervisedTask, MLJTask,
-        Deterministic, Probabilistic, Unsupervised, Supervised,
-        DeterministicNetwork, ProbabilisticNetwork,
-        Found, Continuous, Finite, Infinite,
-        OrderedFactor, Unknown,
-        Count, Multiclass, Binary,
-        scitype, scitype_union, scitypes,
-        predict, predict_mean, predict_median, predict_mode,
-        transform, inverse_transform, se, evaluate, fitted_params,
-        @constant, @more, HANDLE_GIVEN_ID, UnivariateFinite,
-        partition, X_and_y,
-        load_boston, load_ames, load_iris, load_reduced_ames,
-        load_crabs, datanow,
-        features, X_and_y
+# reexport from MLJBase and ScientificTypes:
+export nrows, nfeatures, traits,
+    selectrows, selectcols,
+    SupervisedTask, UnsupervisedTask, MLJTask,
+    Deterministic, Probabilistic, Unsupervised, Supervised,
+    DeterministicNetwork, ProbabilisticNetwork,
+    GrayImage, ColorImage, Image,
+    Found, Continuous, Finite, Infinite,
+    OrderedFactor, Unknown,
+    Count, Multiclass, Binary, Scientific,
+    scitype, scitype_union, schema,
+    target_scitype, input_scitype, output_scitype,
+    predict, predict_mean, predict_median, predict_mode,
+    transform, inverse_transform, se, evaluate, fitted_params,
+    @constant, @more, HANDLE_GIVEN_ID, UnivariateFinite,
+    partition, X_and_y,
+    load_boston, load_ames, load_iris, load_reduced_ames,
+    load_crabs, datanow,
+    features, X_and_y
 
 using MLJBase
+
 # to be extended:
 import MLJBase: fit, update, clean!,
                 predict, predict_mean, predict_median, predict_mode,
@@ -59,6 +64,7 @@ import MLJBase: fit, update, clean!,
 
 using Requires
 import Pkg.TOML
+using OrderedCollections
 using  CategoricalArrays
 import Distributions: pdf, mode
 import Distributions
@@ -67,6 +73,8 @@ using ProgressMeter
 import Tables
 import PrettyTables
 import Random
+using ScientificTypes
+import ScientificTypes
 
 # convenience packages
 using DocStringExtensions: SIGNATURES, TYPEDEF
@@ -89,19 +97,6 @@ import .Registry
 const srcdir = dirname(@__FILE__) # the directory containing this file:
 const CategoricalElement = Union{CategoricalString,CategoricalValue}
 
-include("utilities.jl")     # general purpose utilities
-include("measures.jl")       # loss functions
-include("machines.jl")      # machine API
-include("networks.jl")      # for building learning networks
-include("composites.jl")    # composite models, incl. learning networks exported as models
-include("operations.jl")    # syntactic sugar for operations (predict, transform, etc)
-include("resampling.jl")    # evaluating models by assorted resampling strategies
-include("parameters.jl")    # hyper-parameter range constructors and nested hyper-parameter API
-include("tuning.jl")
-include("ensembles.jl")     # homogeneous ensembles
-include("tasks.jl")         # enhancements to task interface defined in MLJBase
-
-
 ## LOAD BUILT-IN MODELS
 
 include("builtins/Transformers.jl")
@@ -110,14 +105,35 @@ include("builtins/KNN.jl")
 include("builtins/ridge.jl") # defines a model for testing only
 
 
-include("loading.jl") # model metadata processing
+## LOAD CORE CODE
 
-## GET THE EXTERNAL MODEL METADATA
+include("utilities.jl")     # general purpose utilities
+include("measures.jl")      # API for loss functions & defs of built-ins
+include("machines.jl")    
+include("networks.jl")      # for building learning networks
+include("composites.jl")    # composite models & exporting learning networks
+include("operations.jl")    # syntactic sugar for operations (predict, etc)
+include("resampling.jl")    # resampling strategies and model evaluation
+include("parameters.jl")    # hyperparameter ranges and grid generation
+include("tuning.jl")
+include("ensembles.jl")     # homogeneous ensembles
+include("tasks.jl")         # enhancements to MLJBase task interface 
+include("metadata.jl")      # tools to initialize metadata resources
+include("model_search.jl")  # tools to inspect metadata and find models
+include("loading.jl")       # fuctions to load model implementation code
+include("scitypes.jl")      # extensions to ScientificTypes.sictype
+
+    
+
+## GET THE EXTERNAL MODEL METADATA AND CODE FOR OPTIONAL DEPENDENCIES
 
 function __init__()
-    @info "Loading model metadata"
+    @info "Loading model metadata from registry. "
     global metadata_file = joinpath(srcdir, "registry", "Metadata.toml")
-    global METADATA = TOML.parsefile(metadata_file)
+    global INFO_GIVEN_HANDLE = info_given_handle(metadata_file)
+    global AMBIGUOUS_NAMES = ambiguous_names(INFO_GIVEN_HANDLE)
+    global PKGS_GIVEN_NAME = pkgs_given_name(INFO_GIVEN_HANDLE)
+    global NAMES = model_names(INFO_GIVEN_HANDLE)
     @require(LossFunctions="30fc2ffe-d236-52d8-8643-a9d8f7c094a7",
              include("loss_functions_interface.jl"))
 end

@@ -220,7 +220,7 @@ function MLJBase.fit(tuned_model::EitherTunedModel{Grid,M}, verbosity::Int, X, y
         # mutate `clone` (the model to which `resampler` points):
         for k in 1:n_iterators
             field = ranges[k].field
-            setproperty!(clone, field, A_row[k])
+            recursive_setproperty!(clone, field, A_row[k])
         end
 
         if verbosity == 2
@@ -296,18 +296,16 @@ MLJBase.package_name(::Type{<:DeterministicTunedModel}) = "MLJ"
 MLJBase.package_uuid(::Type{<:DeterministicTunedModel}) = ""
 MLJBase.package_url(::Type{<:DeterministicTunedModel}) = "https://github.com/alan-turing-institute/MLJ.jl"
 MLJBase.is_pure_julia(::Type{<:DeterministicTunedModel{T,M}}) where {T,M} = MLJBase.is_pure_julia(M)
-MLJBase.input_scitype_union(::Type{<:DeterministicTunedModel{T,M}}) where {T,M} = MLJBase.input_scitype_union(M)
-MLJBase.input_is_multivariate(::Type{<:DeterministicTunedModel{T,M}}) where {T,M} = MLJBase.input_is_multivariate(M)
-MLJBase.target_scitype_union(::Type{<:DeterministicTunedModel{T,M}}) where {T,M} = MLJBase.target_scitype_union(M)
+MLJBase.input_scitype(::Type{<:DeterministicTunedModel{T,M}}) where {T,M} = MLJBase.input_scitype(M)
+MLJBase.target_scitype(::Type{<:DeterministicTunedModel{T,M}}) where {T,M} = MLJBase.target_scitype(M)
 
 MLJBase.load_path(::Type{<:ProbabilisticTunedModel}) = "MLJ.ProbabilisticTunedModel"
 MLJBase.package_name(::Type{<:ProbabilisticTunedModel}) = "MLJ"
 MLJBase.package_uuid(::Type{<:ProbabilisticTunedModel}) = ""
 MLJBase.package_url(::Type{<:ProbabilisticTunedModel}) = "https://github.com/alan-turing-institute/MLJ.jl"
 MLJBase.is_pure_julia(::Type{<:ProbabilisticTunedModel{T,M}}) where {T,M} = MLJBase.is_pure_julia(M)
-MLJBase.input_scitype_union(::Type{<:ProbabilisticTunedModel{T,M}}) where {T,M} = MLJBase.input_scitype_union(M)
-MLJBase.target_scitype_union(::Type{<:ProbabilisticTunedModel{T,M}}) where {T,M} = MLJBase.target_scitype_union(M)
-MLJBase.input_is_multivariate(::Type{<:ProbabilisticTunedModel{T,M}}) where {T,M} = MLJBase.input_is_multivariate(M)
+MLJBase.input_scitype(::Type{<:ProbabilisticTunedModel{T,M}}) where {T,M} = MLJBase.input_scitype(M)
+MLJBase.target_scitype(::Type{<:ProbabilisticTunedModel{T,M}}) where {T,M} = MLJBase.target_scitype(M)
 
 
 ## LEARNING CURVES
@@ -327,6 +325,7 @@ useful in the case of models with indeterminate fit-results, such as a
 random forest.
 
 ````julia
+using CSV
 X, y = datanow()
 atom = RidgeRegressor()
 ensemble = EnsembleModel(atom=atom)

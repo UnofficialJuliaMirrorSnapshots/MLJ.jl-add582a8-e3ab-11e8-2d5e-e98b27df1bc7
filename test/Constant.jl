@@ -3,6 +3,7 @@ module TestConstant
 # using Revise
 using Test
 using MLJ
+import MLJBase
 using CategoricalArrays
 import Distributions
 
@@ -14,16 +15,15 @@ y = [1.0, 1.0, 2.0, 2.0]
 
 model = ConstantRegressor(distribution_type=
                           Distributions.Normal{Float64})
-fitresult, cache, report =
-    @test_logs (:info, r"Fitted a constant probability distribution") MLJ.fit(model, 1, X, y)
+fitresult, cache, report = MLJ.fit(model, 1, X, y)
 
 d=Distributions.Normal(1.5, 0.5)
 @test fitresult == d
 @test predict(model, fitresult, X) == fill(d, 10)
 @test predict_mean(model, fitresult, X) == fill(1.5, 10)
 
-info(model)
-info(MLJ.DeterministicConstantRegressor)
+MLJBase.info(model)
+MLJBase.info(MLJ.DeterministicConstantRegressor)
 
 
 ## CLASSIFIER
@@ -32,7 +32,7 @@ yraw = ["Perry", "Antonia", "Perry", "Skater"]
 y = categorical(yraw)
 
 model = ConstantClassifier()
-fitresult, cache, report = @test_logs (:info, r"probabilities") MLJ.fit(model, 1, X, y)
+fitresult, cache, report =  MLJ.fit(model, 1, X, y)
 d = MLJ.UnivariateFinite([y[1], y[2], y[4]], [0.5, 0.25, 0.25]) 
 @test fitresult == d
 
@@ -44,8 +44,8 @@ yhat = predict_mode(model, fitresult, X)
 yhat = predict(model, fitresult, X)
 @test yhat == fill(d, 10)
 
-info(model)
-info(MLJ.DeterministicConstantClassifier)
+MLJBase.info(model)
+MLJBase.info(MLJ.DeterministicConstantClassifier)
 
 end # module
 true

@@ -12,12 +12,13 @@ using MLJBase
 using MLJ.Transformers
 using MLJ.Constant
 using MLJModels
+using ScientificTypes
 
 #prettyurls to be changed
 makedocs(
     sitename = "MLJ",
     format = Documenter.HTML(),
-    modules = [MLJ, MLJBase, MLJModels, MLJ.Transformers],
+    modules = [MLJ, MLJBase, MLJModels, MLJ.Transformers, ScientificTypes],
     pages = Any["Getting Started"=>"index.md",
                 "Evaluating model performance"=>"evaluating_model_performance.md",
                 "Measures"=> "measures.md",
@@ -44,4 +45,4 @@ deploydocs(
 #    modules = [MLJ]
 # Documenter can also automatically deploy documentation to gh-pages.
 # See "Hosting Documentation" and deploydocs() in the Documenter manual
-# for more information.
+# for more MLJBase.information.
