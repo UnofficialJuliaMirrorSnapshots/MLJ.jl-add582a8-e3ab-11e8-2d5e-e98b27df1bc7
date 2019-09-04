@@ -224,7 +224,7 @@ end
 
 ## FOR PRETTY PRINTING COLUMN TABLES
 
-function pretty_table(X; showtypes=true, alignment=:l, kwargs...)
+function pretty(X; showtypes=true, alignment=:l, kwargs...)
     names = schema(X).names |> collect
     if showtypes
         types = schema(X).types |> collect
@@ -233,12 +233,16 @@ function pretty_table(X; showtypes=true, alignment=:l, kwargs...)
     else
         header  = names
     end
+    show_color = MLJBase.SHOW_COLOR
+    color_off()
     try
         PrettyTables.pretty_table(MLJBase.matrix(X),
                                   header; alignment=alignment, kwargs...)
     catch
-        println("Trouble displaying evaluation results.")
+        println("Trouble displaying table.")
     end
+    show_color ? color_on() : color_off()
+    return nothing
 end
 
 
