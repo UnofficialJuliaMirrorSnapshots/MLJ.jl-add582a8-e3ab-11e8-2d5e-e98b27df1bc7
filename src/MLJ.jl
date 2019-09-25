@@ -2,34 +2,34 @@ module MLJ
 
 ## EXPORTS
 
+export MLJ_VERSION
+
 # defined in include files:
-export @curve, @pcurve, pretty,                       # utilities.jl
-        coerce, supervised, unsupervised,             # tasks.jl
-        report,                                       # machines.jl
-        Holdout, CV, evaluate!, Resampler,            # resampling.jl
-        Params, params, set_params!,                  # parameters.jl
-        strange, iterator,                            # parameters.jl
-        Grid, TunedModel, learning_curve!,            # tuning.jl
-        EnsembleModel,                                # ensembles.jl
-        rebind!,                                      # networks.jl
-        machines, sources, anonymize!,                # composites.jl
-        @from_network,                                # composites.jl
-        fitresults,                                   # composites.jl
-        @pipeline                                      # pipelines.jl
+export @curve, @pcurve, pretty,                   # utilities.jl
+    coerce, supervised, unsupervised,             # tasks.jl
+    report,                                       # machines.jl
+    Holdout, CV, evaluate!, Resampler,            # resampling.jl
+    Params, params, set_params!,                  # parameters.jl
+    strange, iterator,                            # parameters.jl
+    Grid, TunedModel, learning_curve!,            # tuning.jl
+    EnsembleModel,                                # ensembles.jl
+    rebind!,                                      # networks.jl
+    machines, sources, anonymize!,                # composites.jl
+    @from_network,                                # composites.jl
+    fitresults,                                   # composites.jl
+    @pipeline,                                    # pipelines.jl
+    matching                                      # matching.jl
 
 # defined in include files "machines.jl and "networks.jl":
 export Machine, NodalMachine, machine, AbstractNode,
         source, node, fit!, freeze!, thaw!, Node, sources, origins
 
-# defined in include file "builtins/Transformers.jl":
-#-#
-
-# rexport from Random, Statistics, Distributions, CategoricalArrays:
+# re-export from Random, Statistics, Distributions, CategoricalArrays:
 export pdf, mode, median, mean, shuffle!, categorical, shuffle, levels, levels!
-export std
+export std, support
 
 # re-export from MLJBase and ScientificTypes:
-export nrows, nfeatures, 
+export nrows, nfeatures, color_off, color_on,
     selectrows, selectcols,
     SupervisedTask, UnsupervisedTask, MLJTask,
     Deterministic, Probabilistic, Unsupervised, Supervised,
@@ -43,6 +43,7 @@ export nrows, nfeatures,
     predict, predict_mean, predict_median, predict_mode,
     transform, inverse_transform, se, evaluate, fitted_params,
     @constant, @more, HANDLE_GIVEN_ID, UnivariateFinite,
+    classes,
     partition, unpack,
     mav, mae, rms, rmsl, rmslp1, rmsp, l1, l2,  
     misclassification_rate, cross_entropy,      
@@ -73,6 +74,7 @@ import MLJModels: models
 
 using Requires
 import Pkg.TOML
+import Pkg
 using OrderedCollections
 using  CategoricalArrays
 import Distributions: pdf, mode
@@ -101,7 +103,7 @@ using RecipesBase # for plotting
 
 const srcdir = dirname(@__FILE__) # the directory containing this file:
 const CategoricalElement = Union{CategoricalString,CategoricalValue}
-
+const MLJ_VERSION = Pkg.installed()["MLJ"]
 
 ## INCLUDES
 
@@ -115,6 +117,7 @@ include("resampling.jl")    # resampling strategies and model evaluation
 include("parameters.jl")    # hyperparameter ranges and grid generation
 include("tuning.jl")
 include("ensembles.jl")     # homogeneous ensembles
+include("model_matching.jl")# inferring model search criterion from data
 include("tasks.jl")         # enhancements to MLJBase task interface 
 include("scitypes.jl")      # extensions to ScientificTypes.sictype
 include("plotrecipes.jl")
