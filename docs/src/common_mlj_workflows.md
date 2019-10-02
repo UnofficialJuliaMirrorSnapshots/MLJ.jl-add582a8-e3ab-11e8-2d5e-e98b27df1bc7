@@ -42,7 +42,7 @@ first(X, 4)
 y[1:4]
 ```
 
-## Model search
+## Model search (**experimental**)
 
 *Reference:*   [Model Search](model_search.md) 
 
@@ -187,7 +187,7 @@ evaluate!(tree, resampling=CV(nfolds=5, shuffle=true, rng=1234),
           measure=[cross_entropy, ZeroOneLoss()])
 ```
 
-With user-specified train/evaluation pairs of row indices:
+With user-specified train/test pairs of row indices:
 
 ```@example workflows
 f1, f2, f3 = 1:13, 14:26, 27:36

@@ -19,11 +19,13 @@ for "RidgeRegresssor", which is provided by multiple packages
  
 `models(x -> x.is_supervised && x.is_pure_julia)` lists all supervised models written in pure julia. 
 
+**experimental:**
 `models(matching(X))` lists all unsupervised models compatible with input `X`. 
 
+**experimental!**
 `models(matching(X, y))` lists all supervised modesl compatible with input/target `X/y`.
 
-With additional conditions:
+**experimetnal!** With additional conditions:
 
 ```julia
 models(matching(X, y)) do model
@@ -76,9 +78,9 @@ y, X =  unpack(channing,
                :Cens=>Multiclass)
 ```
 
-Splitting row indices into train/evaluate/test:
+Splitting row indices into train/validation/test:
 
-`train, evaluate, test = partition(eachindex(y), 0.7, 0.2, shuffle=true, rng=1234)` for 70:20:10 ratio
+`train, valid, test = partition(eachindex(y), 0.7, 0.2, shuffle=true, rng=1234)` for 70:20:10 ratio
 
 
 #### Machine construction
