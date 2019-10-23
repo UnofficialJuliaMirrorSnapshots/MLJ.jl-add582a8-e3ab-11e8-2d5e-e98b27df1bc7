@@ -13,11 +13,26 @@ News for MLJ and its satellite packages: [MLJBase](https://github.com/alan-turin
 [MLJModels](https://github.com/alan-turing-institute/MLJModels.jl/releases) | 
 [ScientificTypes](https://github.com/alan-turing-institute/ScientificTypes.jl/releases) (mainly for developers)
 
+
 ## News
+
+### 22 Oct 2019
+
+MLJ 0.5.1 released.
+
+### 21 Oct 2019
+
+- ScientificTypes 0.2.2 released.
+
+- MLJModels  0.5.2 released
+
+### 17 Oct 2019
+
+MLJBase 0.7 released.
 
 ### 11 Oct 2019
 
-MLJ 0.5.1 released.
+MLJModels 0.5.1 released.
 
 ### 30 Sep 2019
 
